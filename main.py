@@ -1,9 +1,8 @@
 import re
 
 
-__version__ = 0.1
-defined_roles = ["doctor", "don", "detective", "normalpolice", "normalmafia", "terrorist"]
-true_inquiries = ["normalmafia", "terrorist"]
+__version__ = 0.2
+defined_roles = ["doctor", "don", "silencer", "detective", "normalpolice", "normalmafia", "terrorist"]
 
 
 def check_choice_exist(func):
@@ -43,7 +42,8 @@ class Doctor(Player):
         super().__init__(name)
         self.side = "police"
         self.role = "doctor"
-        self.inquiry = True if self.role in true_inquiries else False
+        self.inquiry = False
+        self.silenced = False
         self.description = ""
 
     @check_choice_exist
@@ -52,9 +52,15 @@ class Doctor(Player):
 
         players = game.get_players_by_name()
 
-        choice = input("\nDoctor choice to heal: ")
+        choice = input(f"\nDoctor ({self.name}) choice to heal: ")
 
         target = game.players[players.index(choice)]
+
+        for player in game.players:
+            if player.healed:
+                player.healed = False # Release the player who healed last night.
+                break
+
         target.healed = True
 
         night_narrate += f"Doctor heals {target}. "
@@ -65,7 +71,8 @@ class Don(Player):
         super().__init__(name)
         self.side = "mafia"
         self.role = "don"
-        self.inquiry = True if self.role in true_inquiries else False
+        self.inquiry = False
+        self.silenced = False
         self.description = ""
 
     @check_choice_exist
@@ -74,12 +81,48 @@ class Don(Player):
 
         players = game.get_players_by_name()
 
-        choice = input("\nDon choice to shoot: ")
+        choice = input(f"\nDon ({self.name}) choice to shoot: ")
 
         target = game.players[players.index(choice)]
         target.take_shot()
 
-        night_narrate += f"{target} takes shot from Don. {target} is {'alive' if target.alive else 'dead'}. "        
+        night_narrate += f"{target} takes shot from Don. {target} is {'alive' if target.alive else 'dead'}. "
+
+
+class Silencer(Player):
+    def __init__(self, name: str) -> None:
+        super().__init__(name)
+        self.side = "police" # Silencer is on the mafia side, but in counting, counted as police.
+        self.role = "silencer"
+        self.inquiry = False
+        self.silenced = False
+        self.description = ""
+
+    @check_choice_exist
+    def night_op(self) -> None:
+        global night_narrate
+
+        players = game.get_players_by_name()
+
+        while True:
+            choice = input(f"\nSilencer ({self.name}) choice to silence: ")
+
+            target = game.players[players.index(choice)]
+
+            if target.silenced: # Silencer can't silence a player for two nights in a row.
+                print("Silencer can't silence a player for two nights in a row.")
+                continue
+
+            for player in game.players:
+                if player.silenced:
+                    player.silenced = False # Release the player who silenced last night.
+                    break
+
+            target.silenced = True
+
+            night_narrate += f"Silencer silenced {target}. "
+
+            break
 
 
 class Detective(Player):
@@ -87,7 +130,8 @@ class Detective(Player):
         super().__init__(name)
         self.side = "police"
         self.role = "detective"
-        self.inquiry = True if self.role in true_inquiries else False
+        self.inquiry = False
+        self.silenced = False
         self.description = ""
 
     @check_choice_exist
@@ -96,7 +140,7 @@ class Detective(Player):
 
         players = game.get_players_by_name()
 
-        choice = input("\nDetective choice to inquiry: ")
+        choice = input(f"\nDetective ({self.name}) choice to inquiry: ")
 
         target = game.players[players.index(choice)]
 
@@ -108,7 +152,8 @@ class NormalPolice(Player):
         super().__init__(name)
         self.side = "police"
         self.role = "normalpolice"
-        self.inquiry = True if self.role in true_inquiries else False
+        self.inquiry = False
+        self.silenced = False
         self.description = ""
     
     def night_op(self) -> None:
@@ -120,7 +165,8 @@ class NormalMafia(Player):
         super().__init__(name)
         self.side = "mafia"
         self.role = "normalmafia"
-        self.inquiry = True if self.role in true_inquiries else False
+        self.inquiry = True
+        self.silenced = False
         self.description = ""
         self.heir_priority = 1 # Heir priority for make night shot decision (when Don is dead)
         self.inherited = False
@@ -145,7 +191,8 @@ class Terrorist(Player):
         super().__init__(name)
         self.side = "mafia"
         self.role = "terrorist"
-        self.inquiry = True if self.role in true_inquiries else False
+        self.inquiry = True
+        self.silenced = False
         self.description = ""
         self.heir_priority = 2 # Heir priority for make night shot decision (when Don is dead)
         self.inherited = False
@@ -184,6 +231,9 @@ class Game:
             print("Vote between this players:", ", ".join(all_players))
             while True:
                 for player in players:
+                    if self.players[players.index(player)].silenced:
+                        continue
+
                     vote = input(f"{player}'s vote: ")
                     if vote not in all_players:
                         for player in previous_players:
@@ -247,6 +297,9 @@ class Game:
             target.alive = False
             print(f"{target} eliminated with {target.role if spot_role else 'Unknown'} role.")
 
+            if not spot_role: # If player eliminated by terrorist.
+                return None
+
             if target.role == "terrorist":
                 self.update_alive_players()
                 players = self.get_players_by_name()
@@ -256,7 +309,8 @@ class Game:
                     if victim not in players:
                         print(f"Chosen player is not exist.")
                         continue
-                    
+
+                    print()
                     target = self.players[players.index(victim)]
                     elimination(target, spot_role=False)
                     break
@@ -304,7 +358,7 @@ God Commands:
                 break # Ends day.
             elif command == "status":
                 print()
-                [print(f"{i + 1} - {player} is {player.role}") for i, player in enumerate(self.players)]
+                [print(f"{i + 1} - {player} is {player.role}{' (silenced)' if player.silenced else ''}") for i, player in enumerate(self.players)]
             elif re.search(r"^remove", command):
                 choice = re.findall(r"^remove (\w+)", command)
                 if choice:
@@ -381,6 +435,11 @@ God Commands:
 
                 prioritize_players.append(players.pop(players.index(preferred_mafia)))
 
+        silencer = [player for player in players if player.role == "silencer"]
+        if silencer:
+            silencer = silencer[0]
+            prioritize_players.append(players.pop(players.index(silencer)))
+
         detective = [player for player in players if player.role == "detective"]
         if detective:
             detective = detective[0]
@@ -401,6 +460,8 @@ God Commands:
 
             if len(self.players) < 6:
                 raise Exception("Mafia game require 6 or more than 6 players to start.")
+            elif len(set(self.players)) < len((self.players)):
+                raise Exception("Each player must have a unique name.")
         except Exception as err:
             self.players: list[Player] = []
             raise Exception(err)
@@ -416,6 +477,13 @@ God Commands:
             for role in self.roles:
                 if role not in defined_roles:
                     raise Exception(f'"{role}" is not in defined roles.')
+
+            if self.roles.count("don") > 1:
+                raise Exception(f'Mafia Game only supports 1 Don in the game.')
+            elif self.roles.count("doctor") > 1:
+                raise Exception(f'Mafia Game only supports 1 Doctor in the game.')
+            elif self.roles.count("silencer") > 1:
+                raise Exception(f'Mafia Game only supports 1 Silencer in the game.')
         except Exception as err:
             self.roles = []
             raise Exception(err)
@@ -423,7 +491,7 @@ God Commands:
     def distribute_roles(self):
         temp_list = []
 
-        self.players = set(self.players)
+        self.players = set(self.players) # Randomize players.
         self.players = list(self.players)
 
         for i, player_name in enumerate(self.players):
@@ -431,6 +499,8 @@ God Commands:
                 temp_list.append(Doctor(player_name))
             elif self.roles[i] == "don":
                 temp_list.append(Don(player_name))
+            elif self.roles[i] == "silencer":
+                temp_list.append(Silencer(player_name))
             elif self.roles[i] == "detective":
                 temp_list.append(Detective(player_name))
             elif self.roles[i] == "normalpolice":
@@ -477,7 +547,7 @@ God Commands:
             self.current_day += 1
 
 global game
-game = Game(f"Mafia Manager {__version__}")
+game = Game(f"Mafia Game {__version__}")
 
 try:
     game.run()
