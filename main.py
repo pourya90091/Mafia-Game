@@ -144,7 +144,7 @@ class Detective(Player):
 
         target = game.players[players.index(choice)]
 
-        night_narrate += f"{target}'s inquiry: {target.inquiry}. "        
+        night_narrate += f"{target}'s inquiry: {target.inquiry if target.alive else 'No Result'}. "
 
 
 class NormalPolice(Player):
