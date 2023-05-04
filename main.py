@@ -468,7 +468,7 @@ God Commands:
 
     def get_roles(self):
         try:
-            self.roles = input("\nRoles: ")
+            self.roles = input("\nRoles: ").lower()
             self.roles = re.findall(r"\w+", self.roles)
 
             for _ in range(len(self.players) - len(self.roles)):
